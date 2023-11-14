@@ -163,7 +163,7 @@ ungroup() %>%
   glimpse()
 view(elev_data)
 
-#lets plot!# 
+#lets plot!##
 require(ggplot2)
 plot_elev<- ggplot(elev_data, aes(x= Peak_week, y=ELEVATION, size=Poaceae, 
             col= LOCATION, shape= SAMPLER, group= SAMPLER)) +

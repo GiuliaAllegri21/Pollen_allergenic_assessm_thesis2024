@@ -1,0 +1,190 @@
+# Clear environment
+rm(list = ls(all = T))
+
+
+
+library(tidyverse)
+library(raster)
+library(ggplot2)
+library(AeRobiology)
+library(lme4) # used for creating linear mixed models or classic linear models
+library(utf8)
+library(readxl)
+library(dplyr)
+library(spTimer) ## for temporally forecasting ##   
+library(plotly)
+setwd("/Users/Zuli/Desktop/PollenR")
+
+data= read_excel("Poaceae_Sites2022.xlsx", na ="NA")
+data
+summary(data)
+str(data)
+
+
+
+## lets try with altitude ###
+require(ggplot2)
+ggplot(data = data,
+       aes(y = Poaceae, group = ELEVATION, col= LOCATION, )) + 
+  geom_boxplot( na.rm = T) + 
+  scale_y_log10() + facet_wrap(. ~ SAMPLER) + 
+  scale_color_brewer(palette = "Paired")
+
+## altro modeling con curve di density ###
+require(ggplot2)
+ggplot(data=data, aes(y=Poaceae,fill=SITO))  + 
+  geom_density(col="blue", na.rm = T, alpha= 0.3) 
+  + scale_y_log10() 
+  + facet_wrap(. ~ SAMPLER) 
+  + scale_fill_discrete(type = "Paired")
+
+require(ggplot2)
+ggplot(data=data, aes(y=Poaceae, col=SITO)) + 
+  geom_density( na.rm = T, alpha= 0.3) + 
+    scale_y_log10() + 
+    facet_wrap(. ~ SAMPLER) +
+  scale_color_brewer(palette = "Paired")
+
+## let's try to create a model with our normalized variables from 0 to 1 (for having more stable values) ##
+
+setwd("/Users/Zuli/Desktop/PollenR")
+datasiti= read_excel("Poaceae_Sites2022.xlsx", na= "NA")
+datasiti 
+
+view(datasiti)
+
+require(dplyr)
+# Min-Max normalization function
+# grouping for each site => calculations are done for each site
+# so, calculations are applied on site-week groups
+# summarise data, aggregating weekly, according to the previous grouping
+# apply different calculations based on a condition
+# total mean
+# "drop" removes all the grouping levels
+# normalizing all data, line by line (which should already be aggregated per week)
+
+ ## creating a function for normalizing data
+min_max_norm <- function(x) {
+  (x - min(x, na.rm = T)) / (max(x, na.rm = T) - min(x, na.rm = T))}
+
+norm_data <- datasiti %>% 
+group_by(LOCATION, SAMPLER, Peak_week) %>% 
+summarise(Poaceae =  mean(Poaceae, na.rm=T), 
+          .groups = "drop")%>%
+            mutate(Poaceae_norm = min_max_norm(Poaceae))%>% 
+            glimpse()
+view(norm_data)
+
+## density analysis
+require(ggplot2)
+ggplot(data =norm_data, aes(y=Poaceae, col=LOCATION)) + 
+  geom_density( na.rm = T, alpha= .3) + 
+  scale_y_log10() + 
+  facet_wrap(. ~ SAMPLER) +
+  scale_color_brewer(palette = "Paired")
+
+# boxplotting the data for understand ##
+require(ggplot2)
+ggplot(data = norm_data,
+       aes(y = Poaceae, group = LOCATION, col= LOCATION, )) + 
+  geom_boxplot( na.rm = T) + 
+  scale_y_log10() + facet_wrap(. ~ SAMPLER) + 
+  scale_color_brewer(palette = "Paired")
+
+# another type boxplot 
+ggplot(norm_data, aes(y=Poaceae,colour=LOCATION))  + 
+  geom_boxplot(na.rm= T) + scale_y_log10()+ facet_wrap(. ~ SAMPLER) 
+  geom_jitter(aes(colour = LOCATION))
+
+# using library(plotly) for creating plots with different characteristics and it's interactive
+ggplot(norm_data, aes(x= LOCATION, y=Poaceae, colour=LOCATION, size=Poaceae )) +
+    geom_point(alpha=0.5) + 
+  facet_wrap(. ~ SAMPLER)
+    theme_test()
+ggplotly()
+
+### now we need to normalize the data but dividing them by SAMPLER##
+
+norm_data <- datasiti %>%
+  group_by(LOCATION, SAMPLER, Peak_week) %>% 
+  summarise(Poaceae =  mean(Poaceae, na.rm=T), 
+  .groups = "drop")%>%
+  group_by(SAMPLER, LOCATION)%>%
+  mutate(Poaceae = min_max_norm(Poaceae))%>% 
+  ungroup()%>%
+  glimpse()
+
+view(norm_data)
+## normalizing also the sites##
+norm_data<- datasiti %>%
+  group_by(LOCATION, SAMPLER, Peak_week) %>% 
+  summarise(Poaceae =  mean(Poaceae, na.rm=T), 
+            .groups = "drop")%>%
+  group_by(SAMPLER, LOCATION)%>%
+  mutate(Poaceae = min_max_norm(Poaceae))%>% 
+  ungroup()%>%
+  glimpse()
+
+# and now again using library(plotly) for creating plots with different characteristics and it's interactive, we can select the dots and analyze the data## 
+ggplot(norm_data, aes(x= LOCATION, y=Poaceae, colour=LOCATION, size=Poaceae )) +
+  geom_point(alpha=0.5) + 
+  facet_wrap(. ~ SAMPLER)
+theme_test()
+ggplotly()
+
+
+## the further task is necessary to create a graph in which can correlate height (SITO) with the pollen's week peak##
+elev_data<- data %>%
+  group_by(LOCATION, Peak_week, SAMPLER) %>% 
+  summarise(ELEVATION= unique(ELEVATION),Poaceae =  mean(Poaceae, na.rm=T), 
+            .groups = "drop")%>%
+  group_by(LOCATION, SAMPLER, Peak_week)%>%
+  summarise(ELEVATION= (ELEVATION), Poaceae = max(Poaceae,na.rm = T))%>% 
+  ungroup()%>%
+  glimpse()
+view(elev_data)
+
+
+# plot of the data ##
+plot(x= elev_data$Start_week, y= elev_data$ELEVATION)
+
+## lets create a df in which we have the max Poaceae values in correlation with the elevation
+## important for have a close look on how the pollen peak week start corr. with elevation##
+dplyr::filter(elev_data, Poaceae != -Inf)
+## creating the df with arranged values## 
+  
+elev_data<- data %>%
+  group_by(LOCATION, Peak_week, SAMPLER) %>% 
+  summarise(ELEVATION= unique(ELEVATION),Poaceae =  mean(Poaceae, na.rm=T), 
+            .groups = "drop")%>%
+  group_by(LOCATION, SAMPLER)%>%
+  dplyr::filter(Poaceae == max(Poaceae, na.rm=T)) %>% 
+ungroup() %>% 
+  glimpse()
+view(elev_data)
+
+#lets plot!# 
+require(ggplot2)
+plot_elev<- ggplot(elev_data, aes(x= Peak_week, y=ELEVATION, size=Poaceae, 
+            col= LOCATION, shape= SAMPLER, group= SAMPLER)) +
+  geom_point(aes(col= LOCATION), alpha=0.6) + 
+  geom_smooth(method= "lm", linewidth= 0.5, se= FALSE, aes(col= SAMPLER)) 
+
+theme_test()
+ggplotly()
+
+## ordering the legend##
+plot_elev + guides(color = guide_legend(order = 1),
+                   size = guide_legend(order = 2),
+                   shape = guide_legend(order = 3))
+                   
+                   
+  
+  ### creating a code for a plot due to my intervention in an High School day event dedicated to air ###
+  ggplot(norm_data, aes(x= Peak_week, y=Poaceae, 
+                        group=LOCATION, col= "San Michele all'Adige", size= Poaceae)) +
+    geom_point(alpha=0.5) + 
+    theme_test()
+  ggplotly()
+
+  

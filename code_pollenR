@@ -67,12 +67,12 @@ glimpse(sanmic)
 view(sanmic)
 
 ## Rabbi ##
-rabbi <- read_xlsx("meteo Rabbi.xlsx") %>% 
+##rabbi <- read_xlsx("meteo Rabbi.xlsx") %>% 
   rename(date = date, temp= temp, rain = rain, wind_speed= wind_speed) %>% 
   mutate(site= "Bagni di Rabbi") %>% 
   select(site, date, temp, wind_speed, wind_direction)
 glimpse(rabbi)
-view(rabbi)
+view(rabbi)##
 
 # using bind rows aggregate the columns and rows ## 
 meteo8923<- bind_rows(meteo8923, altissimo, rosetta, Fumo, Cevedale, sanmic, rabbi)

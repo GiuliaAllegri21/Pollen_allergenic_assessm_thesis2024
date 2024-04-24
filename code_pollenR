@@ -1,8 +1,8 @@
-# Clear environment
+# NEW WITH ALL THE DATA #
 rm(list = ls(all = T))
+options(na.action= "na.omit")
 
-
-
+setwd("/Users/Zuli/Desktop/PollenR")
 library(tidyverse)
 library(raster)
 library(ggplot2)
@@ -13,178 +13,249 @@ library(readxl)
 library(dplyr)
 library(spTimer) ## for temporally forecasting ##   
 library(plotly)
-setwd("/Users/Zuli/Desktop/PollenR")
+library(ncdf4)
 
-data= read_excel("Poaceae_Sites2022.xlsx", na ="NA")
-data
-summary(data)
-str(data)
+## new df with meteo and all the sites ##
+
+meteo8923 <- read_xlsx("dati_meteo_1989_2023.xlsx", col_types = c("text", "date", "numeric", 
+"numeric","numeric", "numeric","text", "numeric"))
+view(meteo8923)
+
+siti <- read_xlsx("tutti_siti_pollen_1989_2023_Poaceae.xlsx")
+glimpse(siti)
+view(siti)
+
+## joining the Altissimo columns into the meteo8923 df ##
+altissimo <- read_csv("altissimo(1).csv", skip= 4) %>% 
+  rename(date = `...2`, temp= Temperature, humidity = Humidity) %>% 
+  mutate(site= "Rifugio Altissimo") %>% 
+  select(site, date, temp, humidity)
+glimpse(altissimo)
+view(altissimo)
+
+## the same for the Cevedale data ##
+Cevedale <- read_csv("cevedale.csv", skip= 4) %>% 
+  rename(date = `...2`, temp= Temperature, humidity = Humidity) %>% 
+  mutate(site= "Rifugio Larcher al Cevedale") %>% 
+  select(site, date, temp, humidity)
+glimpse(Cevedale)
+view(Cevedale)
+
+## same for Val di Fumo ##
+Fumo <- read_csv("fumo.csv", skip= 4) %>% 
+  rename(date = `...2`, temp= Temperature, humidity = Humidity) %>% 
+  mutate(site= "Val di Fumo") %>% 
+  select(site, date, temp, humidity)
+glimpse(Fumo)
+view(Fumo)
+
+# again for Rosetta ##
+rosetta <- read_csv("rosetta.csv", skip= 4) %>% 
+  rename(date = `...2`, temp= Temperature, humidity = Humidity) %>% 
+  mutate(site= "Rifugio Rosetta") %>% 
+  select(site, date, temp, humidity)
+glimpse(rosetta)
+view(rosetta)
 
 
+## introducing also san michele all'adige##
+sanmic <- read_xlsx("Meteo San Michele 1989_2023.xlsx") %>% 
+  rename( wind_speed= wind_mean ) %>% 
+  mutate(site= "San Michele all'Adige") %>% 
+  select(site, date, temp, rain, wind_speed)
+glimpse(sanmic)
+view(sanmic)
 
-## lets try with altitude ###
-require(ggplot2)
-ggplot(data = data,
-       aes(y = Poaceae, group = ELEVATION, col= LOCATION, )) + 
-  geom_boxplot( na.rm = T) + 
-  scale_y_log10() + facet_wrap(. ~ SAMPLER) + 
-  scale_color_brewer(palette = "Paired")
+## Rabbi ##
+rabbi <- read_xlsx("meteo Rabbi.xlsx") %>% 
+  rename(date = date, temp= temp, rain = rain, wind_speed= wind_speed) %>% 
+  mutate(site= "Bagni di Rabbi") %>% 
+  select(site, date, temp, wind_speed, wind_direction)
+glimpse(rabbi)
+view(rabbi)
 
-## altro modeling con curve di density ###
-require(ggplot2)
-ggplot(data=data, aes(y=Poaceae,fill=SITO))  + 
-  geom_density(col="blue", na.rm = T, alpha= 0.3) 
-  + scale_y_log10() 
-  + facet_wrap(. ~ SAMPLER) 
-  + scale_fill_discrete(type = "Paired")
+# using bind rows aggregate the columns and rows ## 
+meteo8923<- bind_rows(meteo8923, altissimo, rosetta, Fumo, Cevedale, sanmic, rabbi)
+glimpse(meteo8923)
+view(meteo8923)
 
-require(ggplot2)
-ggplot(data=data, aes(y=Poaceae, col=SITO)) + 
-  geom_density( na.rm = T, alpha= 0.3) + 
-    scale_y_log10() + 
-    facet_wrap(. ~ SAMPLER) +
-  scale_color_brewer(palette = "Paired")
+## normalization of the data ##
+min_max_norm <- function(x) {(x - min(x, na.rm = T)) / (max(x, na.rm = T) - min(x, na.rm = T))}
 
-## let's try to create a model with our normalized variables from 0 to 1 (for having more stable values) ##
-
-setwd("/Users/Zuli/Desktop/PollenR")
-datasiti= read_excel("Poaceae_Sites2022.xlsx", na= "NA")
-datasiti 
-
-view(datasiti)
-
-require(dplyr)
-# Min-Max normalization function
-# grouping for each site => calculations are done for each site
-# so, calculations are applied on site-week groups
-# summarise data, aggregating weekly, according to the previous grouping
-# apply different calculations based on a condition
-# total mean
-# "drop" removes all the grouping levels
-# normalizing all data, line by line (which should already be aggregated per week)
-
- ## creating a function for normalizing data
-min_max_norm <- function(x) {
-  (x - min(x, na.rm = T)) / (max(x, na.rm = T) - min(x, na.rm = T))}
-
-norm_data <- datasiti %>% 
-group_by(LOCATION, SAMPLER, Peak_week) %>% 
-summarise(Poaceae =  mean(Poaceae, na.rm=T), 
-          .groups = "drop")%>%
-            mutate(Poaceae_norm = min_max_norm(Poaceae))%>% 
-            glimpse()
-view(norm_data)
-
-## density analysis
-require(ggplot2)
-ggplot(data =norm_data, aes(y=Poaceae, col=LOCATION)) + 
-  geom_density( na.rm = T, alpha= .3) + 
-  scale_y_log10() + 
-  facet_wrap(. ~ SAMPLER) +
-  scale_color_brewer(palette = "Paired")
-
-# boxplotting the data for understand ##
-require(ggplot2)
-ggplot(data = norm_data,
-       aes(y = Poaceae, group = LOCATION, col= LOCATION, )) + 
-  geom_boxplot( na.rm = T) + 
-  scale_y_log10() + facet_wrap(. ~ SAMPLER) + 
-  scale_color_brewer(palette = "Paired")
-
-# another type boxplot 
-ggplot(norm_data, aes(y=Poaceae,colour=LOCATION))  + 
-  geom_boxplot(na.rm= T) + scale_y_log10()+ facet_wrap(. ~ SAMPLER) 
-  geom_jitter(aes(colour = LOCATION))
-
-# using library(plotly) for creating plots with different characteristics and it's interactive
-ggplot(norm_data, aes(x= LOCATION, y=Poaceae, colour=LOCATION, size=Poaceae )) +
-    geom_point(alpha=0.5) + 
-  facet_wrap(. ~ SAMPLER)
-    theme_test()
-ggplotly()
-
-### now we need to normalize the data but dividing them by SAMPLER##
-
-norm_data <- datasiti %>%
-  group_by(LOCATION, SAMPLER, Peak_week) %>% 
-  summarise(Poaceae =  mean(Poaceae, na.rm=T), 
-  .groups = "drop")%>%
-  group_by(SAMPLER, LOCATION)%>%
-  mutate(Poaceae = min_max_norm(Poaceae))%>% 
-  ungroup()%>%
-  glimpse()
-
-view(norm_data)
-## normalizing also the sites##
-norm_data<- datasiti %>%
-  group_by(LOCATION, SAMPLER, Peak_week) %>% 
-  summarise(Poaceae =  mean(Poaceae, na.rm=T), 
+norm_data_siti<- siti %>% 
+  mutate(year = lubridate::year(date)) %>% 
+  group_by(site, year,week, sampler ) %>% 
+  summarise(Poaceae =  mean(Poaceae, na.rm=T),
+            elevation = mean(elevation, na.rm=T),
             .groups = "drop")%>%
-  group_by(SAMPLER, LOCATION)%>%
-  mutate(Poaceae = min_max_norm(Poaceae))%>% 
+  mutate(Poaceae_norm = min_max_norm(Poaceae))%>% 
+  ungroup()
+glimpse(norm_data_siti)
+view(norm_data_siti)
+
+
+## from daily to weekly meteo data ##
+# using package(lubridate) I'm able to create a week column related to the date ##
+
+meteo8923 <- meteo8923 %>% 
+  mutate(year = lubridate::year(date), week = isoweek(date)) 
+view(meteo8923)
+
+meteo8923 <- meteo8923 %>% 
+  group_by(site, week, year) %>% 
+  summarise(temp=mean(temp, na.rm = T), 
+            rain= sum(rain, na.rm= T), 
+            wind_speed= mean(wind_speed, na.rm= T),
+            humidity = mean(humidity, na.rm=T)) %>% 
+ungroup()
+glimpse(meteo8923)
+view(meteo8923)
+
+
+# # normalizing meteo data #
+# norm_meteo<- meteo8923 %>% 
+#   mutate(temp = min_max_norm(temp),
+#          rain= min_max_norm(rain),
+#          wind_speed= min_max_norm(wind_speed))%>% 
+#   glimpse()
+# view(norm_meteo)
+
+# lets unite the two data frame##
+##selecting data of interests#
+
+data_join <- full_join(norm_data_siti, meteo8923, by= c("site", "week", "year")) %>% 
+  dplyr::select(site, week, year, Poaceae_norm, sampler, temp, rain, 
+                wind_speed, humidity, elevation)
+glimpse(data_join)
+view(data_join)
+## lets try to do some analysis using one variable: elevation ##
+
+elevation_df<- data_join %>%
+  group_by(site, week, sampler) %>% 
+  summarise(elevation= unique(elevation),Poaceae_norm =  mean(Poaceae_norm, na.rm=T), 
+            .groups = "drop")%>%
+  group_by(site, sampler,week)%>%
+  summarise(elevation= (elevation), Poaceae_norm = max(Poaceae_norm,na.rm = T))%>% 
   ungroup()%>%
   glimpse()
+view(elevation_df)
 
-# and now again using library(plotly) for creating plots with different characteristics and it's interactive, we can select the dots and analyze the data## 
-ggplot(norm_data, aes(x= LOCATION, y=Poaceae, colour=LOCATION, size=Poaceae )) +
-  geom_point(alpha=0.5) + 
-  facet_wrap(. ~ SAMPLER)
+# PLOT ## useful to graphically understand the amount of Poaceae 
+## at an elevation in which week ##
+
+plot_elevation<- ggplot(elevation_df, aes(x= week, y=elevation, size=Poaceae_norm, 
+                                          col= site, shape= sampler, group= site)) +
+  geom_point(aes(col= site), alpha=0.6) 
 theme_test()
 ggplotly()
 
+## now we extract the peak_week ## 
 
-## the further task is necessary to create a graph in which can correlate height (SITO) with the pollen's week peak##
-elev_data<- data %>%
-  group_by(LOCATION, Peak_week, SAMPLER) %>% 
-  summarise(ELEVATION= unique(ELEVATION),Poaceae =  mean(Poaceae, na.rm=T), 
-            .groups = "drop")%>%
-  group_by(LOCATION, SAMPLER, Peak_week)%>%
-  summarise(ELEVATION= (ELEVATION), Poaceae = max(Poaceae,na.rm = T))%>% 
-  ungroup()%>%
-  glimpse()
-view(elev_data)
+peak_week <- data_join %>% 
+  group_by(site, year) %>% 
+  dplyr :: filter(Poaceae_norm == max(Poaceae_norm, na.rm = T)) %>% 
+  ungroup() %>% 
+  select(site, week, year) %>% 
+  rename(peak_week= week)
+view(peak_week)
 
 
-# plot of the data ##
-plot(x= elev_data$Start_week, y= elev_data$ELEVATION)
+# left join for peal_week df and our data_join ##
 
-## lets create a df in which we have the max Poaceae values in correlation with the elevation
-## important for have a close look on how the pollen peak week start corr. with elevation##
-dplyr::filter(elev_data, Poaceae != -Inf)
-## creating the df with arranged values## 
-  
-elev_data<- data %>%
-  group_by(LOCATION, Peak_week, SAMPLER) %>% 
-  summarise(ELEVATION= unique(ELEVATION),Poaceae =  mean(Poaceae, na.rm=T), 
-            .groups = "drop")%>%
-  group_by(LOCATION, SAMPLER)%>%
-  dplyr::filter(Poaceae == max(Poaceae, na.rm=T)) %>% 
-ungroup() %>% 
-  glimpse()
-view(elev_data)
+peak_join<- left_join(data_join, peak_week, by = c( "site", "year"))
+view(peak_join)
 
-#lets plot!##
-require(ggplot2)
-plot_elev<- ggplot(elev_data, aes(x= Peak_week, y=ELEVATION, size=Poaceae, 
-            col= LOCATION, shape= SAMPLER, group= SAMPLER)) +
-  geom_point(aes(col= LOCATION), alpha=0.6) + 
-  geom_smooth(method= "lm", linewidth= 0.5, se= FALSE, aes(col= SAMPLER)) 
+## lets try to aggregate in a different way, using our previous meteo data (12 weeks) ##
+## 
+pre_peak_data <- peak_join %>% 
+  dplyr :: filter(week < peak_week & week > peak_week - 12)
+view(pre_peak_data)
 
-theme_test()
-ggplotly()
+# lets aggregate the meteo data to the previous pre_peak_data the 3 months of interest##
+pre_peak_data <- peak_join %>% 
+  dplyr :: filter(week < peak_week & week > peak_week - 12) %>% 
+  group_by(site, year) %>% 
+  summarise(temp=mean(temp, na.rm = T), 
+            rain= sum(rain, na.rm= T), 
+            wind_speed= mean(wind_speed, na.rm= T),
+            humidity = mean(humidity, na.rm= T),
+            peak_week= unique(peak_week),
+            elevation= mean(elevation, na.rm= T)) %>% 
+  ungroup()
+glimpse(pre_peak_data)
+view(pre_peak_data)
 
-## ordering the legend##
-plot_elev + guides(color = guide_legend(order = 1),
-                   size = guide_legend(order = 2),
-                   shape = guide_legend(order = 3))
-                   
-                   
-  
-  ### creating a code for a plot due to my intervention in an High School day event dedicated to air ###
-  ggplot(norm_data, aes(x= Peak_week, y=Poaceae, 
-                        group=LOCATION, col= "San Michele all'Adige", size= Poaceae)) +
-    geom_point(alpha=0.5) + 
-    theme_test()
-  ggplotly()
+# lets try with a linear model with all the data  ##
+# I've added also elevation even if is a value that is constant for every week in different sites#
+# statistically isn't a sognificant value, it gives me Na's as values##
 
-  
+model_test_peak <- lm("peak_week ~ temp *rain * wind_speed * elevation ", 
+                      data= pre_peak_data, na.action = na.omit)
+glimpse(pre_peak_data)
+summary(model_test_peak)
+
+# R squared is 0.9441, so maybe we're on the right way #
+plot(model_test_peak)
+
+
+#model with temperature interaction ##
+model_test_peak1 <- lm("peak_week ~ temp * rain", 
+                      data= pre_peak_data, na.action = na.omit)
+glimpse(pre_peak_data)
+summary(model_test_peak1)
+
+## model 2 with interaction temperature and wind speed#
+model_test_peak2 <- lm("peak_week ~ temp * wind_speed ", 
+                      data= pre_peak_data, na.action = na.omit)
+glimpse(pre_peak_data)
+summary(model_test_peak2)
+
+# model 3 with interaction only with rain ##
+model_test_peak3 <- lm("peak_week ~ rain* wind_speed  ", 
+                      data= pre_peak_data, na.action = na.omit)
+glimpse(pre_peak_data)
+summary(model_test_peak3)
+
+# model 4 with interaction temp elevation ##
+model_test_peak4 <- lm("peak_week ~ temp * elevation  ", 
+                       data= pre_peak_data, na.action = na.omit)
+glimpse(pre_peak_data)
+summary(model_test_peak4)
+
+# model 5 with interaction rain temp and  elevation ##
+model_test_peak5 <- lm("peak_week ~ temp * rain * elevation  ", 
+                       data= pre_peak_data, na.action = na.omit)
+glimpse(pre_peak_data)
+summary(model_test_peak5)
+
+# elaboration and comparison ##
+## linear model with weather and pollen data analysis ##
+## 1 load data ###
+## 2 processing data, same time resolution (weekly data not daily) ###
+## linear model analysis ## 
+
+## lm1(data= dat, formula"POLLEN ~ PRECIP")
+## lm2(data= dat, formula"POLLEN ~ WIND")
+## lm3(data= dat, formula"POLLEN ~ TEMP")
+## lm4(data= dat, formula"POLLEN ~ PRECIP + WIND * TEMP") per essere predittori, 
+#moltiplicazione indica l'interazione tra le due#
+
+install.packages("MuMIn")
+library(MuMIn) 
+
+
+## AIC models comparison ##
+ex1<- AIC(model_test_peak, model_test_peak1, model_test_peak2, model_test_peak3,
+          model_test_peak4,model_test_peak5 )
+ex1
+
+
+## dredge tests all the possible combinations between our variables and ranked all based on AIC of best models ##
+# and it assigns the weight of how much important the model is ## weighted mean ##
+
+options(na.action = "na.omit")
+d_0 <- dredge(model_test_peak, beta = "partial.sd", rank = AIC)
+d_0
+
+plot(model_test_peak2)
+

@@ -1,5 +1,4 @@
-### Title: "Improving the allergenic pollen exposure risk assessment in Trentino"
-
+### Title: ...
 ### Authors: Giulia Allegri, Ulisse Gomarasca
 ### Start of script ------------------------------------------------------------
 rm(list = ls(all = T))
@@ -13,9 +12,10 @@ library(viridis)
 library(lubridate)
 library(readr)
 library(readxl)
-library(tidyr)
-
-
+library(tidyverse)
+library(AeRobiology)
+library(MuMIn)
+library(plotly)
 # Function to normalize data
 min_max_norm <- function(x) {
   (x - min(x, na.rm = T)) / (max(x, na.rm = T) - min(x, na.rm = T))
@@ -25,7 +25,8 @@ min_max_norm <- function(x) {
 
 ### Data -----------------------------------------------------------------------
 ## Dati meteo siti ----
-dat_malghe <- read_xlsx( # dati Coler, Maleda, Malga Cercen, Malga Stablet, Malga Terzolasa
+dat_malghe <- read_xlsx( # dati Coler, Maleda, Malga Cercen, 
+  #Malga Stablet, Malga Terzolasa#
   "dati_meteo_89_23.xlsx",
   col_types = c("text", "date", "numeric", "numeric", "numeric", "numeric")) %>%
   glimpse()
@@ -39,13 +40,13 @@ dat_villa <- read_xlsx(
   glimpse()
 
 
-dat_altissimo <- read_csv("altissimo(1).csv", skip = 4, show_col_types = F) %>% 
-  rename(date = `...2`, temp = Temperature, humidity = Humidity) %>% 
-  mutate(site = "Rifugio Altissimo") %>%
-  select( -Proprietà, -`Maximum Temperature`  , -`Minimum Temperature`, -`Maximum Humidity`, -`Minimum Humidity`,
-          -`Dew Point`) %>%
-  glimpse()
-view(dat_altissimo)
+# dat_altissimo <- read_csv("altissimo(1).csv", skip = 4, show_col_types = F) %>% 
+#   rename(date = `...2`, temp = Temperature, humidity = Humidity) %>% 
+#   mutate(site = "Rifugio Altissimo") %>%
+#   select( -Proprietà, -`Maximum Temperature`  , -`Minimum Temperature`, -`Maximum Humidity`, -`Minimum Humidity`,
+#           -`Dew Point`) %>%
+#   glimpse()
+
 
 
 dat_cevedale <- read_csv("cevedale.csv", skip = 4, show_col_types = F) %>% 
@@ -55,7 +56,7 @@ dat_cevedale <- read_csv("cevedale.csv", skip = 4, show_col_types = F) %>%
           -`Dew Point`) %>%
   glimpse()
 
-#fumo#
+# fumo #
 dat_fumo <- read_csv("fumo.csv", skip = 4, show_col_types = F) %>% 
   rename(date = `...2`, temp= Temperature, humidity = Humidity) %>% 
   mutate(site= "Val di Fumo") %>%
@@ -82,7 +83,7 @@ dat_rosetta2 <- read_xlsx("rosetta2.xlsx", skip= 2) %>%
   select(-...3, -temp, -...5, -...6) %>% 
   mutate( site= "Rifugio Rosetta") %>% 
   glimpse()
-view(dat_rosetta2)
+
 
   ## san michele #
 dat_sanmic <- read_xlsx("Meteo San Michele 1989_2023.xlsx") %>% 
@@ -94,7 +95,7 @@ dat_sanmic <- read_xlsx("Meteo San Michele 1989_2023.xlsx") %>%
 dat_rabbi <- read_xlsx("rabbi.xlsx", skip = 2, col_types = c("text", 
                  "numeric", "numeric", "numeric", "numeric", "numeric", "numeric",
                  "text"))%>% 
-  rename(date = `Date`, rain= `Pioggia (mm)`,temp =`Temp. aria (°C)`, 
+ rename(date = `Date`, rain= `Pioggia (mm)`,temp =`Temp. aria (°C)`, 
           wind_speed =`Vel. Vento (m/s)`) %>% 
   mutate(date = parse_date_time(date, orders = "H:M:S d/m/y")) %>% 
   select( -...3  , -...5, -...7, -...8) %>%
@@ -116,32 +117,59 @@ dat_rabbi <- read_xlsx("rabbi.xlsx", skip = 2, col_types = c("text",
     na.omit() %>% 
     mutate(site= "Terzolas") %>%
     glimpse()
-
-
+  
+## Arco added##
+  dat_arco <- read_xlsx("Arco.xlsx", col_types =c("text","text", "numeric",
+                        "numeric")) %>% 
+    mutate(date = parse_date_time(date, orders = "H:M:S d/m/y")) %>%
+    glimpse()
+           
+# castel thun##
+  
+  dat_thun<- read_xlsx("castelthun.xlsx", col_types =c("text","numeric", "numeric")) %>% 
+    mutate(date = parse_date_time(date, orders = "H:M:S d/m/y")) %>%
+    glimpse()
+  
 ## Dati pollini ----
-siti_pollen <- read_xlsx("tutti_siti_pollen_1989_2023_Poaceae.xlsx", trim_ws = T)
+siti_pollen <- read_xlsx("siti_Poaceae_modif.xlsx", trim_ws = T, 
+                         col_types= c("text", "date", "numeric", "text","numeric","numeric")) %>% 
+    rename(elevation= Elevation, date= start_date, week= start_week) 
 
+#   #villa pollen only july##
+# villa_pollen <- read_csv("Villa_pollen.csv") %>% 
+#   rename(date= start_date) %>% 
+# glimpse()
+#          
+# villa_pollen_july = select(villa_pollen, site, date, sampler, Poaceae)
+# villa_pollen_july
+# 
+# 
+# #joining the df##
+# siti_pollen_all <- left_join(
+#   siti_pollen, villa_pollen_july,
+#   by = c("date")) %>% 
+#   glimpse()
+  
 ## plot of pollinic data trough the years ##-----------------
 plot(siti_pollen)  
  siti_pollen %>% 
     ggplot(aes(x = elevation, y = Poaceae)) +
     geom_point(aes(color = elevation), shape = 1, size = 3, stroke = 1, na.rm = T) +
-    geom_smooth(color = "orange2", method = "plot", na.rm = T) +
+    geom_smooth(color = "orange2", method = "lm", na.rm = T) +
     scale_colour_viridis_c() +
     theme_bw()  
 
 ##ELEVATION##
-elev_pollen<- ggplot(siti_pollen, aes(x= date, y=elevation, size=Poaceae, 
-                                   col= site, shape= sampler, group= sampler)) +
+sampler_pollen<- ggplot(dat_all, aes(x= sampler, y=Poaceae, size= Poaceae, 
+                                   col= site, group= sampler)) +
    geom_point(aes(col= site), alpha=0.6) + 
-   geom_smooth(method= "lm", linewidth= 0.5, se= FALSE, aes(col= sampler)) 
- 
+   geom_smooth(method= "lm", linewidth= 0.5, se= FALSE) 
  theme_test()
  ggplotly() 
  
  
  
-## Normalize dati pollini ----
+## Normalize data pollens ----
 # Do this step before to immediately make 2 sampler comparable
 siti_pollen <- siti_pollen %>% 
   group_by(sampler) %>% # first normalize pollen data by sampler
@@ -155,7 +183,7 @@ siti_pollen <- siti_pollen %>%
 
 ### Merge data meteo -----------------------------------------------------------
 dat_meteo <- bind_rows(
-  dat_altissimo,
+  dat_arco,
   dat_cevedale,
   dat_fumo,
   dat_malghe,
@@ -164,6 +192,7 @@ dat_meteo <- bind_rows(
   dat_rosetta2,
   dat_sanmic,
   dat_terzolas,
+  dat_thun,
   dat_villa
 ) %>%
   select(site, date, temp, humidity, rain, wind_speed) %>% 
@@ -235,10 +264,21 @@ peak_week <- dat_all %>%
 view(peak_week)
 
 
-## plot with peak_week and siti_pollen##
-pre_peak_data %>% 
+## ALL SITES plot with peak_week and sites_pollen for understanding # -----------
+##the peak during the year##
+dat_all %>% 
 dplyr::filter(year == 2022 & week > 10 & week < 40) %>% 
 ggplot(aes(x= week, y= Poaceae, col=elevation)) + 
+  geom_point(na.rm = T , alpha= 0.6, size= 4) +
+  geom_line(size=0.4, linetype= 1, col= "red")+
+  scale_y_log10() + 
+  facet_wrap(. ~ site) +
+  scale_colour_viridis_c() 
+
+## 2021##
+dat_all %>% 
+  dplyr::filter(year == 2021 & week > 10 & week < 40) %>% 
+  ggplot(aes(x= week, y= Poaceae, col=elevation)) + 
   geom_point(na.rm = T , alpha= 0.6, size= 4) +
   geom_line(size=0.4, linetype= 1, col= "red")+
   scale_y_log10() + 
@@ -246,10 +286,24 @@ ggplot(aes(x= week, y= Poaceae, col=elevation)) +
   scale_colour_viridis_c()
 
 
+
 ##LINEAR ##
-plot(x=pre_peak_data$year, y= pre_peak_data$Poaceae, type="o", 
+plot(x=dat_all$year, y= dat_all$Poaceae, type="o", 
      col= "red1", 
-     lwd=1, xlab="Peak Week", ylab="Poaceae", main="Trend")
+     lwd=1, xlab=" Year", ylab="Poaceae", main="Trend")
+
+plot_trend(dat_all, interpolation = TRUE, int.method = "lineal",
+           export.plot = TRUE, export.format = "pdf", export.result = TRUE,
+           method = "percentage")
+
+# ##pollen season analysis wit AeRobiology package## ??-----
+# ## calculate_ps(siti_pollen_agg, method = "percentage", th.day = 100, perc = 95,
+#              def.season = "natural", reduction = FALSE, red.level = 0.9,
+#              derivative = 5, man = 11, th.ma = 5, n.clinical = 5,
+#              window.clinical = 7, window.grains = 5, th.pollen = 10,
+#              th.sum = 100, type = "none", interpolation = TRUE,
+#              int.met=hod = "lineal", maxdays = 30, result = "table",
+#              plot = TRUE, export.plot = FALSE, export.result = FALSE)
 
 
 ## Left join for peak_week df and our data with pollen and meteo
@@ -257,17 +311,19 @@ pre_peak_data <- left_join(dat_all, peak_week, by = c("site", "year"))
 
 ## Filter pre-peak week meteo data (12 weeks)
 pre_peak_data <- pre_peak_data %>%
-  dplyr::filter(week < peak_week & week > peak_week - 12)
+  dplyr::filter(week <= peak_week & week > peak_week - 12)
 view(pre_peak_data)
 
 ## Aggregate the meteo data to pre-peak week meteo data the 12 weeks of interest
 pre_peak_data <- pre_peak_data %>% 
+  mutate(rain_peak= if_else(condition= week== peak_week, true= rain, false= NA_real_)) %>% 
   group_by(site, year) %>% 
   reframe(
     Poaceae = mean(Poaceae, na.rm = T),
     elevation = mean(elevation, na.rm = T),
     temp = mean(temp, na.rm = T),
-    rain = sum(rain, na.rm = T),
+    rain_sum= sum(rain, na.rm = T),
+    rain_peak= mean(rain_peak, na.rm= T),
     wind_speed = mean(wind_speed, na.rm = T),
     humidity = mean(humidity, na.rm = T),
     peak_week = unique(peak_week),
@@ -289,53 +345,99 @@ view(pre_peak_data)
 
 
 ### Scatterplots ---------------------------------------------------------------
-# We can plot with the original meteo data, or with the pre-peak-week aggregated data
+# We can plot with the original weather data, or with the pre-peak-week aggregated data
 # E.g.:
 dat_all %>% 
   ggplot(aes(x = temp, y = log(Poaceae))) +
   geom_point(aes(color = wind_speed), shape = 1, na.rm = T) +
   geom_smooth(color = "green3", method = "lm", na.rm = T) +
-  xlab("") +
+  xlab("Temperature") +
+  theme_bw()
+
+## elevation temp and poaceae# dat all 
+dat_all %>% 
+  ggplot(aes(x = temp, y = Poaceae)) +
+  geom_point(aes(color = elevation), shape = 19, na.rm = T) +
+  geom_smooth(color = "gold2", method = "lm", na.rm = T) +
+  xlab("Temperature") +
+  ggtitle("Poaceae not in pre preak week in correlation with temperature,
+  elevation value as third variable")+
+  scale_y_log10()+
+  theme_bw()
+
+## temperature with sampler as color## year 2022 weeks: 10-40 ##
+dat_all %>% 
+  dplyr::filter(year == 2022 & week > 10 & week < 40) %>% 
+  ggplot(aes(x = temp, y = log(Poaceae))) +
+  geom_point(aes(color = sampler), shape = 1, na.rm = T) +
+  geom_smooth(color = "green4", method = "lm", na.rm = T) +
+  xlab("Temperature") +
   theme_bw()
 
 ## temperature with sampler as color##
 dat_all %>% 
   ggplot(aes(x = temp, y = log(Poaceae))) +
   geom_point(aes(color = sampler), shape = 1, na.rm = T) +
-  geom_smooth(color = "gold3", method = "lm", na.rm = T) +
-  xlab("") +
+  geom_smooth(color = "green4", method = "lm", na.rm = T) +
+  xlab("Temperature") +
+  theme_bw()
+
+#temp and elevation as col week 10-30-->modifying the site we can observe how the peak changes##
+dat_all %>% 
+  dplyr::filter(year == 1991  & week > 10 & week < 30,
+                site== "Arco") %>% 
+  ggplot(aes(x = week, y = Poaceae)) +
+  geom_point(aes(color = Poaceae), shape = 8, size= 5, alpha= 3, na.rm = T) +
+  geom_smooth(color = "red1", method = "lm", na.rm = T) +
+  scale_y_log10()+
+  xlab("week") 
   theme_bw()
 
 #temp and elevation as col ##
 dat_all %>% 
-  ggplot(aes(x = temp, y = log(Poaceae))) +
-  geom_point(aes(color = elevation), shape = 1, na.rm = T) +
-  geom_smooth(color = "gold3", method = "lm", na.rm = T) +
-  xlab("") +
+  dplyr::filter(year == 2022  & week > 10 & week < 30) %>% 
+  ggplot(aes(x = week, y = Poaceae)) +
+  geom_point(aes(color = elevation), shape = 8, size= 5, alpha= 3, na.rm = T) +
+  geom_smooth(color = "green", method = "lm", na.rm = T) +
+  xlab("week") +
+  scale_y_log10()+
+  ggtitle("2022 Poaceae trend correlated with week and elevation gain" )
   theme_bw()
 
-##rain and temperature as color (division)##
+
+##Pollen trend and temperature, elev as color (division)##
 dat_all %>% 
-  ggplot(aes(x = rain, y = log(Poaceae))) +
-  geom_point(aes(color = temp), shape = 1, na.rm = T) +
-  geom_smooth(color = "gold3", method = "lm", na.rm = T) +
-  xlab("") +
+  ggplot(aes(x = temp, y = Poaceae)) +
+  geom_point(aes(color = elevation), shape = 19, na.rm = T) +
+  geom_smooth(color = "green3", method = "lm", na.rm = T) +
+  xlab("Temperature") +
+  ggtitle("Temperature and Pollen Trend, with elevation as third factor")+
+  scale_y_log10()+
   theme_bw()
 
 ## rain normal with sampler as color with all the data not normalized##
 dat_all %>% 
-  ggplot(aes(x = rain, y = log(Poaceae))) +
-  geom_point(aes(color = elevation), shape = 1, na.rm = T) +
+  ggplot(aes(x = rain, y = Poaceae)) +
+  geom_point(aes(color = temp), shape = 1, na.rm = T) +
   geom_smooth(color = "red2", method = "lm", na.rm = T) +
-  xlab("") +
+  xlab("Rain") +
+  scale_y_log10()+
+  theme_bw()
+
+## temp_elev data not pre peak date #
+dat_all %>% 
+  ggplot(aes(x = elevation, y = log(Poaceae))) +
+  geom_point(aes(color = temp), shape = 1, na.rm = T) +
+  geom_smooth(color = "red2", method = "lm", na.rm = T) +
+  xlab("Elevation") +
   theme_bw()
 
 ##wind_speed in all data not normalized #
-dat_all %>% 
+dat_all%>% 
   ggplot(aes(x = wind_speed, y = log(Poaceae))) +
   geom_point(aes(color = sampler), shape = 1, na.rm = T) +
-  geom_smooth(color = "gold3", method = "lm", na.rm = T) +
-  xlab("") +
+  geom_smooth(color = "green2", method = "lm", na.rm = T) +
+  xlab("wind_speed") +
   theme_bw()
 
 # wind with temp#
@@ -343,51 +445,91 @@ dat_all %>%
   ggplot(aes(x = wind_speed, y = log(Poaceae))) +
   geom_point(aes(color = temp), shape = 1, na.rm = T) +
   geom_smooth(color = "red3", method = "lm", na.rm = T) +
-  xlab("") +
+  xlab("wind_speed") +
   theme_bw()
 
 
-## rain and sampler distribution ##
+## rain and sampler distribution in pre peak dates, to understand which factor maybe##
+##influenced before the peak ##
 pre_peak_data %>% 
-  ggplot(aes(x = temp, y = log(Poaceae) )) +
-  geom_point(aes(color = peak_week), shape = 1, size = 3, stroke = 1, na.rm = T) +
-  geom_smooth(color = "gold3", method = "lm", na.rm = T) +
+  ggplot(aes(x = peak_week, y = Poaceae )) +
+  geom_point(aes(color = elevation), shape = 8, size = 3, stroke = 1, na.rm = T) +
+  geom_smooth(color = "red2", method = "lm", na.rm = T) +
+  ggtitle("Poaceae's pollen distribution in relation with peak week 
+          with elevation as third dimensional variable")+
   scale_colour_viridis_c() +
+  scale_y_log10()+
   theme_bw()
 
-#rain#
+#elevation and distribution#
 pre_peak_data %>% 
-  ggplot(aes(x = rain, y = log(Poaceae))) +
-  geom_point(aes(color = sampler), shape = 1, size = 3, stroke = 1, na.rm = T) +
-  geom_smooth(color = "gold3", method = "lm", na.rm = T) + 
-  scale_colour_viridis_d() +
+  ggplot(aes(x = peak_week, y = elevation )) +
+  geom_point(aes(color = Poaceae), shape = 8, size = 3, stroke = 1, na.rm = T) +
+  geom_smooth(color = "red2", method = "lm", na.rm = T) +
+  coord_cartesian(xlim = c(20, 35), ylim = c(100, 2800))
+  scale_colour_viridis_c()+
+  scale_y_log10()+
   theme_bw()
 
-## rain with temperature as color, gives the distribition another connotation# 
+
+
+## sites##
+dat_all %>% 
+  ggplot(aes(x = temp, y = Poaceae )) +
+  geom_point(aes(color = site), shape = 8, size = 3, stroke = 1, na.rm = T) +
+  geom_smooth(color = "red2", method = "lm", na.rm = T) +
+  scale_colour_viridis_d() +
+  scale_y_log10() +
+  theme_bw()
+
+# only san michele ##
+pre_peak_data %>% 
+  dplyr::filter(site == "San Michele all'Adige") %>% 
+  ggplot(aes(x = temp, y = Poaceae )) +
+  geom_point(aes(color = rain_peak), shape = 8, size = 3, stroke = 1, na.rm = T) +
+  geom_smooth(color = "red2", method = "lm", na.rm = T) +
+  ggtitle("San Michele Trend")+
+  scale_y_log10() +
+  scale_colour_viridis_c() +
+  scale_y_log10() +
+  theme_bw()
+  
+#sampler#
+pre_peak_data %>% 
+  ggplot(aes(x = peak_week, y = Poaceae)) +
+  geom_point(aes(color = sampler), shape = 19, size = 3, stroke = 1, na.rm = T) +
+  geom_smooth(color = "red", method = "lm", na.rm = T) + 
+  ggtitle("Poaceae trend in relationship with peak_week and differenciated by sampler")+
+  scale_colour_viridis_d() +
+  scale_y_log10() +
+  theme_bw()
+
+## rain with temperature as color, gives the distribution another connotation# 
 # during a period of 12 weeks before the peak week##
 
 pre_peak_data %>% 
-  ggplot(aes(x = rain, y = log(Poaceae))) +
-  geom_point(aes(color = temp), shape = 1, size = 3, stroke = 1, na.rm = T) +
+  ggplot(aes(x = rain_peak, y = Poaceae)) +
+  geom_point(aes(color = temp), shape = 8, size = 3, stroke = 1, na.rm = T) +
   geom_smooth(color = "orange2", method = "lm", na.rm = T) +
   scale_colour_viridis_c() +
+  scale_y_log10() +
   theme_bw()
 
 
 #wind_speed#
 pre_peak_data %>% 
   ggplot(aes(x = temp, y = log(Poaceae))) +
-  geom_point(aes(color = wind_speed), shape = 1, size = 3, stroke = 1, na.rm = T) +
+  geom_point(aes(color = wind_speed), shape = 8, size = 3, stroke = 1, na.rm = T) +
   geom_smooth(color = "orange2", method = "lm", na.rm = T) +
   scale_colour_viridis_c() +
   theme_bw()
 
-## temp_log useful for analizing exponential relations in our models##-----------------------
+## temp_log useful for analyse exponential relations in our models##-----------------------
 pre_peak_data <- pre_peak_data %>% 
   mutate(temp_log = log(temp)) %>% 
   glimpse()
 
-### Normalize meteo data ------------------------------------------------------------
+### Normalize weather data ------------------------------------------------------------
 dat_all_norm <- dat_all %>% # normalize meteo data
   mutate( # normalize variables without sampler grouping
     elevation = min_max_norm(elevation),
@@ -414,7 +556,8 @@ pre_peak_norm <- pre_peak_data %>%
     elevation = min_max_norm(elevation),
     temp = min_max_norm(temp),
     temp_log= min_max_norm(temp_log),
-    rain = min_max_norm(rain),
+    rain_sum = min_max_norm(rain_sum),
+    rain_peak = min_max_norm(rain_peak),
     wind_speed = min_max_norm(wind_speed),
     humidity = min_max_norm(humidity)
   ) %>% 
@@ -435,48 +578,174 @@ pre_peak_norm <- pre_peak_data %>%
 # NB: humidity has most of the NAs, consider not using it in the analysis
 
 # NB2: we can do the analysis on pre-peak data (data = pre_peak_norm)....
-model_test_peak <- lm(formula = "peak_week ~ temp * rain * wind_speed * elevation",
+model_test_peak <- lm(formula = "peak_week ~ temp * rain_sum * wind_speed * elevation * rain_peak",
                       data = pre_peak_norm, na.action = na.omit
                       )
 summary(model_test_peak)
-AIC(model_test_peak)
+AICc(model_test_peak)
+
+
+## using the + to analyze the single interaction btw by variable and my predicted value## 
+model_test_peak_plus <- lm(formula = "peak_week ~ temp + rain_sum + wind_speed + elevation + rain_peak",
+                      data = pre_peak_norm, na.action = na.omit)
+summary(model_test_peak_plus)
+AICc(model_test_peak_plus)
+
+
 
 ## lets try just few combinations ##
-model_test_peak1 <- lm(formula = "peak_week ~ temp * rain",
+model_test_peak1 <- lm(formula = "peak_week ~ temp * rain_peak",
                       data = pre_peak_norm, na.action = na.omit)
 summary(model_test_peak1)
-AIC(model_test_peak1)
+AICc(model_test_peak1)
 
 
-model_test_peak2 <- lm(formula = "peak_week ~ temp * rain * wind_speed",
+model_test_peak1_log <- lm(formula = "peak_week ~ temp_log * rain_peak",
+                       data = pre_peak_norm, na.action = na.omit)
+summary(model_test_peak1_log)
+AICc(model_test_peak1_log)
+
+model_test_peak1_log_sum <- lm(formula = "peak_week ~ temp_log * rain_sum",
+                       data = pre_peak_norm, na.action = na.omit)
+summary(model_test_peak1_log_sum)
+AICc(model_test_peak1_log_sum)
+## with +#
+
+model_test_peak_plus1<- lm(formula = "peak_week ~ temp + rain_peak",
+                        data = pre_peak_norm, na.action = na.omit)
+summary(model_test_peak_plus1)
+AICc(model_test_peak_plus1)
+
+model_test_peak_plus1_sum_log<- lm(formula = "peak_week ~ temp_log + rain_sum",
+                           data = pre_peak_norm, na.action = na.omit)
+summary(model_test_peak_plus1_sum_log)
+AICc(model_test_peak_plus1_sum_log)
+
+# model test 2# 
+model_test_peak2 <- lm(formula = "peak_week ~ temp * rain_peak * wind_speed",
                        data = pre_peak_norm, na.action = na.omit
 )
 summary(model_test_peak2)
-AIC(model_test_peak2)
+AICc(model_test_peak2)
 
+##sum rain2 included#
+model_test_peak2_sum <- lm(formula = "peak_week ~ temp * rain_sum * wind_speed",
+                       data = pre_peak_norm, na.action = na.omit
+)
+summary(model_test_peak2_sum)
+AICc(model_test_peak2_sum)
 
-model_test_peak3 <- lm(formula = "peak_week ~  rain * elevation * temp",
+# model test 2 with + ##
+model_test_peak_plus2 <- lm(formula = "peak_week ~ temp + rain_peak + wind_speed",
+                       data = pre_peak_norm, na.action = na.omit
+)
+summary(model_test_peak_plus2)
+AICc(model_test_peak_plus2)
+## log temp 2##
+model_test_peak_plus2_log <- lm(formula = "peak_week ~ temp_log + rain_peak + wind_speed",
+                            data = pre_peak_norm, na.action = na.omit
+)
+summary(model_test_peak_plus2_log)
+AICc(model_test_peak_plus2_log)
+
+##sum rain 2#
+model_test_peak_plus2_sum <- lm(formula = "peak_week ~ temp + rain_sum + wind_speed",
+                            data = pre_peak_norm, na.action = na.omit
+)
+summary(model_test_peak_plus2_sum)
+AICc(model_test_peak_plus2_sum)
+
+# model 3 #
+model_test_peak3 <- lm(formula = "peak_week ~  rain_sum * elevation * temp",
                        data = pre_peak_norm, na.action = na.omit)
 
 summary(model_test_peak3)
-AIC(model_test_peak3)
+AICc(model_test_peak3)
+##3 log sum##
+model_test_peak3 <- lm(formula = "peak_week ~  rain_sum * elevation * temp",
+                       data = pre_peak_norm, na.action = na.omit)
 
-# summary of test#
+summary(model_test_peak3)
+AICc(model_test_peak3)
 
-AIC(model_test_peak, model_test_peak1, model_test_peak2, model_test_peak3)
+model_test_peak3_log <- lm(formula = "peak_week ~  rain_sum * elevation * temp_log",
+                       data = pre_peak_norm, na.action = na.omit)
 
+summary(model_test_peak3_log)
+AICc(model_test_peak3_log)
 
+# model 3 with + ##
+model_test_peak_plus3 <- lm(formula = "peak_week ~  rain_sum + elevation+  temp",
+                       data = pre_peak_norm, na.action = na.omit)
 
-model_test_peak_log <- lm(formula = "peak_week ~ temp_log * rain * wind_speed * elevation",
+summary(model_test_peak_plus3)
+AICc(model_test_peak_plus3)
+
+model_test_peak_plus3_log <- lm(formula = "peak_week ~  rain_sum + elevation+  temp_log",
+                            data = pre_peak_norm, na.action = na.omit)
+
+summary(model_test_peak_plus3_log)
+AICc(model_test_peak_plus3_log)
+
+# model 4# 
+model_test_peak4 <- lm(formula = "peak_week ~  rain_peak * elevation * temp",
+                       data = pre_peak_norm, na.action = na.omit)
+
+summary(model_test_peak4)
+AICc(model_test_peak4)
+
+model_test_peak4_sum <- lm(formula = "peak_week ~  rain_sum * elevation * temp",
+                       data = pre_peak_norm, na.action = na.omit)
+
+summary(model_test_peak4_sum)
+AICc(model_test_peak4_sum)
+
+model_test_peak4_log <- lm(formula = "peak_week ~  rain_peak * elevation * temp_log",
+                       data = pre_peak_norm, na.action = na.omit)
+
+summary(model_test_peak4_log)
+AICc(model_test_peak4_log)
+
+#model 4 ++ ##
+model_test_peak_plus4 <- lm(formula = "peak_week ~  rain_peak + elevation + temp",
+                       data = pre_peak_norm, na.action = na.omit)
+
+summary(model_test_peak_plus4)
+AICc(model_test_peak_plus4)
+
+model_test_peak_plus4_log <- lm(formula = "peak_week ~  rain_peak + elevation + temp_log",
+                            data = pre_peak_norm, na.action = na.omit)
+
+summary(model_test_peak_plus4_log)
+AICc(model_test_peak_plus4_log)
+
+# summary of test multiplicated ## 
+
+AICc(model_test_peak, model_test_peak1, model_test_peak2, model_test_peak3,
+     model_test_peak4)
+
+# summary of tests added## 
+AICc(model_test_peak_plus, model_test_peak_plus1, model_test_peak_plus2, 
+     model_test_peak_plus3, model_test_peak_plus4)
+
+##trying with logarithmic temp values ##
+model_test_peak_log <- lm(formula = "peak_week ~ temp_log * rain_peak  * wind_speed * elevation",
                       data = pre_peak_norm, na.action = na.omit)
 summary(model_test_peak_log)
-AIC(model_test_peak_log)
+AICc(model_test_peak_log)
+
+##logarithmic but with addition# 
+model_test_peak_log_plus <- lm(formula = "peak_week ~ temp_log + rain_peak  + wind_speed + elevation",
+                          data = pre_peak_norm, na.action = na.omit)
+summary(model_test_peak_log_plus)
+AICc(model_test_peak_log_plus)
 
 # # ....or check with more data on all data (data = dat_all_norm) (but this is NOT the research question!)
 #model_test_all <- lm(formula = "Poaceae ~ temp * rain * wind_speed * elevation",
       #            data = dat_all_norm, na.action = na.omit)
 #summary(model_test_all)#
-model_test_all <- lm(formula = "Poaceae ~ temp * rain * wind_speed * elevation",
-                                 data = dat_all_norm, na.action = na.omit)
-summary(model_test_all)
-## just trying ##
+
+
+## ##
+
+

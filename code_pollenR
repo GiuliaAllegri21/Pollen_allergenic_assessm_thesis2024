@@ -2,12 +2,13 @@
 ### Authors: Giulia Allegri, Ulisse Gomarasca
 ### Start of script ------------------------------------------------------------
 rm(list = ls(all = T))
-setwd("/Users/Zuli/Desktop/PollenR/data")
+setwd("/Users..)
 
 
 ### Utilities ------------------------------------------------------------------
 library(dplyr)
 library(ggplot2)
+library(ggrepel)
 library(viridis)
 library(lubridate)
 library(readr)
@@ -131,9 +132,9 @@ dat_rabbi <- read_xlsx("rabbi.xlsx", skip = 2, col_types = c("text",
     glimpse()
   
 ## Dati pollini ----
-siti_pollen <- read_xlsx("siti_Poaceae_modif.xlsx", trim_ws = T, 
+siti_pollen <- read_xlsx("siti_Poaceae_modif1.xlsx", trim_ws = T, 
                          col_types= c("text", "date", "numeric", "text","numeric","numeric")) %>% 
-    rename(elevation= Elevation, date= start_date, week= start_week) 
+    rename(elevation= Elevation, date= start_date, week=start_week) 
 
 #   #villa pollen only july##
 # villa_pollen <- read_csv("Villa_pollen.csv") %>% 
@@ -154,9 +155,9 @@ siti_pollen <- read_xlsx("siti_Poaceae_modif.xlsx", trim_ws = T,
 plot(siti_pollen)  
  siti_pollen %>% 
     ggplot(aes(x = elevation, y = Poaceae)) +
-    geom_point(aes(color = elevation), shape = 1, size = 3, stroke = 1, na.rm = T) +
+    geom_point(aes(color = sampler), shape = 1, size = 3, stroke = 1, na.rm = T) +
     geom_smooth(color = "orange2", method = "lm", na.rm = T) +
-    scale_colour_viridis_c() +
+    scale_colour_viridis_d() +
     theme_bw()  
 
 ##ELEVATION##
@@ -201,6 +202,36 @@ view(dat_meteo)
 # NB: mancano dati meteo per Terzolas
 #recuperati
 
+## aggregate to site for metereological table##
+dat_meteo_mean <- dat_meteo %>% 
+  mutate(year = lubridate::year(date)
+  ) %>% 
+  group_by(site, year) %>% 
+  summarise(temp_mean = mean(temp, na.rm = T),
+            temp_sd=sd(temp, na.rm=T),
+            rain_mean = mean(rain, na.rm = T), 
+            rain_sd=sd(rain, na.rm=T),
+            wind_speed_mean = mean(wind_speed, na.rm = T),
+            wind_speed_sd=sd(wind_speed, na.rm=T))%>% 
+  ungroup() %>% 
+  group_by(site) %>% 
+  summarise(temp = mean(temp_mean, na.rm = T), 
+            temp_sd = mean(temp_sd, na.rm = T),
+            rain = mean(rain_mean, na.rm = T),
+            rain_sd=mean(rain_sd, na.rm=T),
+            wind_speed = mean(wind_speed_mean, na.rm = T),
+            wind_speed_sd=mean(wind_speed_sd, na.rm=T)) %>% 
+  ungroup() %>% 
+  mutate( # convert NaN to NA
+    across(
+      .cols = where(is.double),
+      .fns = ~ if_else(
+        condition = is.nan(.x),
+        true = NA_real_,
+        false = .x
+      )
+    )
+  )
 
 
 ### Aggregate to weekly --------------------------------------------------------
@@ -256,7 +287,7 @@ view(dat_all)
 
 ### Add peak week and pre-peak-week aggregations -------------------------------
 peak_week <- dat_all %>% 
-  group_by(site, year) %>% 
+  group_by(site, year, sampler) %>% 
   dplyr::filter(Poaceae == max(Poaceae, na.rm = T)) %>% 
   ungroup() %>% 
   select(site, year, week) %>% 
@@ -267,22 +298,22 @@ view(peak_week)
 ## ALL SITES plot with peak_week and sites_pollen for understanding # -----------
 ##the peak during the year##
 dat_all %>% 
-dplyr::filter(year == 2022 & week > 10 & week < 40) %>% 
-ggplot(aes(x= week, y= Poaceae, col=elevation)) + 
-  geom_point(na.rm = T , alpha= 0.6, size= 4) +
-  geom_line(size=0.4, linetype= 1, col= "red")+
-  scale_y_log10() + 
+dplyr::filter(year == 2022 & week > 10 & week < 40)%>%
+ggplot(aes(x= week, y= Poaceae, col=sampler, group= sampler)) + 
+  geom_point(na.rm = T , alpha= 0.8, size= 4) +
+  geom_smooth(size=0.4, linetype= 1, col= "red") +
+  labs(x ="weeks", y = "Poaceae [-]")+
+  theme_bw()+
   facet_wrap(. ~ site) +
-  scale_colour_viridis_c() 
+  scale_y_log10() 
 
-## 2021##
+## sito san michele##
 dat_all %>% 
-  dplyr::filter(year == 2021 & week > 10 & week < 40) %>% 
-  ggplot(aes(x= week, y= Poaceae, col=elevation)) + 
+  dplyr::filter(site== "Villa Welsperg") %>% 
+  ggplot(aes(x= year, y= peak_week))+ 
   geom_point(na.rm = T , alpha= 0.6, size= 4) +
   geom_line(size=0.4, linetype= 1, col= "red")+
   scale_y_log10() + 
-  facet_wrap(. ~ site) +
   scale_colour_viridis_c()
 
 
@@ -325,10 +356,8 @@ pre_peak_data <- pre_peak_data %>%
     rain_sum= sum(rain, na.rm = T),
     rain_peak= mean(rain_peak, na.rm= T),
     wind_speed = mean(wind_speed, na.rm = T),
-    humidity = mean(humidity, na.rm = T),
     peak_week = unique(peak_week),
-    sampler = unique(sampler)
-    ) %>% 
+    sampler = unique(sampler)) %>% 
   ungroup() %>% 
   mutate( # convert NaN to NA
     across(
@@ -383,83 +412,101 @@ dat_all %>%
   theme_bw()
 
 #temp and elevation as col week 10-30-->modifying the site we can observe how the peak changes##
-dat_all %>% 
-  dplyr::filter(year == 1991  & week > 10 & week < 30,
-                site== "Arco") %>% 
-  ggplot(aes(x = week, y = Poaceae)) +
-  geom_point(aes(color = Poaceae), shape = 8, size= 5, alpha= 3, na.rm = T) +
-  geom_smooth(color = "red1", method = "lm", na.rm = T) +
+pre_peak_data %>% 
+  dplyr::filter(site== "San Michele all'Adige" & year > 1989 & year < 2023) %>% 
+  ggplot(aes(x = year, y = peak_week)) +
+  geom_point(aes(color = NULL), shape = 19, size= 5, alpha= 3, na.rm = T) +
+  geom_smooth(color = "red", method = "lm", na.rm = T) +
+  coord_cartesian(xlim = c(1989, 2023))+
   scale_y_log10()+
-  xlab("week") 
+  xlab("year") 
   theme_bw()
 
 #temp and elevation as col ##
-dat_all %>% 
-  dplyr::filter(year == 2022  & week > 10 & week < 30) %>% 
-  ggplot(aes(x = week, y = Poaceae)) +
-  geom_point(aes(color = elevation), shape = 8, size= 5, alpha= 3, na.rm = T) +
-  geom_smooth(color = "green", method = "lm", na.rm = T) +
-  xlab("week") +
-  scale_y_log10()+
-  ggtitle("2022 Poaceae trend correlated with week and elevation gain" )
-  theme_bw()
+# dat_all %>% 
+#   dplyr::filter(year == 2022  & week > 10 & week < 30) %>% 
+#   ggplot(aes(x = week, y = log(Poaceae))) +
+#   geom_point(aes(color = elevation), shape = 8, size= 5, alpha= 3, na.rm = T) +
+#   geom_smooth(color = "green", method = "lm", na.rm = T) +
+#   xlab("week") +
+#   scale_y_log10()+
+#   ggtitle("2022 Poaceae trend correlated with week and elevation gain" )
+#   theme_bw()
 
 
 ##Pollen trend and temperature, elev as color (division)##
-dat_all %>% 
-  ggplot(aes(x = temp, y = Poaceae)) +
-  geom_point(aes(color = elevation), shape = 19, na.rm = T) +
-  geom_smooth(color = "green3", method = "lm", na.rm = T) +
-  xlab("Temperature") +
-  ggtitle("Temperature and Pollen Trend, with elevation as third factor")+
-  scale_y_log10()+
-  theme_bw()
+# dat_all %>% 
+#   ggplot(aes(x = temp, y = Poaceae)) +
+#   geom_point(aes(color = elevation), shape = 19, na.rm = T) +
+#   geom_smooth(color = "green3", method = "lm", na.rm = T) +
+#   xlab("Temperature") +
+#   ggtitle("Temperature and Pollen Trend, with elevation as third factor")+
+#   scale_y_log10()+
+#   theme_bw()
 
-## rain normal with sampler as color with all the data not normalized##
-dat_all %>% 
-  ggplot(aes(x = rain, y = Poaceae)) +
-  geom_point(aes(color = temp), shape = 1, na.rm = T) +
-  geom_smooth(color = "red2", method = "lm", na.rm = T) +
-  xlab("Rain") +
-  scale_y_log10()+
-  theme_bw()
+# ## rain normal with sampler as color with all the data not normalized##
+# dat_all %>% 
+#   ggplot(aes(x = rain, y = Poaceae)) +
+#   geom_point(aes(color = temp), shape = 1, na.rm = T) +
+#   geom_smooth(color = "red2", method = "lm", na.rm = T) +
+#   xlab("Rain") +
+#   scale_y_log10()+
+#   theme_bw()
+
+
 
 ## temp_elev data not pre peak date #
-dat_all %>% 
-  ggplot(aes(x = elevation, y = log(Poaceae))) +
-  geom_point(aes(color = temp), shape = 1, na.rm = T) +
-  geom_smooth(color = "red2", method = "lm", na.rm = T) +
-  xlab("Elevation") +
-  theme_bw()
+# dat_all %>% 
+#   ggplot(aes(x = elevation, y = log(Poaceae))) +
+#   geom_point(aes(color = temp), shape = 1, na.rm = T) +
+#   geom_smooth(color = "red2", method = "lm", na.rm = T) +
+#   xlab("Elevation") +
+#   theme_bw()
 
 ##wind_speed in all data not normalized #
-dat_all%>% 
-  ggplot(aes(x = wind_speed, y = log(Poaceae))) +
-  geom_point(aes(color = sampler), shape = 1, na.rm = T) +
-  geom_smooth(color = "green2", method = "lm", na.rm = T) +
-  xlab("wind_speed") +
-  theme_bw()
+# dat_all%>% 
+#   ggplot(aes(x = wind_speed, y = log(Poaceae))) +
+#   geom_point(aes(color = sampler), shape = 1, na.rm = T) +
+#   geom_smooth(color = "green2", method = "lm", na.rm = T) +
+#   xlab("wind_speed") +
+#   theme_bw()
+# 
+# # wind with temp#
+# dat_all %>% 
+#   ggplot(aes(x = wind_speed, y = log(Poaceae))) +
+#   geom_point(aes(color = temp), shape = 1, na.rm = T) +
+#   geom_smooth(color = "red3", method = "lm", na.rm = T) +
+#   xlab("wind_speed") +
+#   theme_bw()
 
-# wind with temp#
-dat_all %>% 
-  ggplot(aes(x = wind_speed, y = log(Poaceae))) +
-  geom_point(aes(color = temp), shape = 1, na.rm = T) +
-  geom_smooth(color = "red3", method = "lm", na.rm = T) +
-  xlab("wind_speed") +
-  theme_bw()
 
-
-## rain and sampler distribution in pre peak dates, to understand which factor maybe##
+## elevation and site distribution in pre peak dates, to understand which factor maybe##
 ##influenced before the peak ##
 pre_peak_data %>% 
-  ggplot(aes(x = peak_week, y = Poaceae )) +
-  geom_point(aes(color = elevation), shape = 8, size = 3, stroke = 1, na.rm = T) +
+  dplyr::filter(site==site) %>% 
+  ggplot(aes(x = peak_week, y = elevation )) +
+  geom_point(aes(color= site), shape = 19, size = 6,
+               na.rm = T) +
   geom_smooth(color = "red2", method = "lm", na.rm = T) +
-  ggtitle("Poaceae's pollen distribution in relation with peak week 
-          with elevation as third dimensional variable")+
-  scale_colour_viridis_c() +
+  coord_cartesian(ylim = c(60, 2800))+  
+  scale_colour_viridis_d() +
   scale_y_log10()+
+  theme_minimal() +                         
+  labs(x = "peak week", y= "elevation (m.a.s.l)") +
   theme_bw()
+
+## temperature and peak_week##
+pre_peak_data  %>% 
+  ggplot(aes(x = peak_week, y = temp )) +
+  geom_point(aes(color= NULL), shape = 19, size = 6,
+             na.rm = T) +
+  geom_smooth(color = "red2", method = "lm", na.rm = T) +
+  scale_colour_viridis_d() +
+  coord_cartesian(ylim = c(5,25))+
+  scale_y_log10()+
+  labs(x = "peak week", y= "mean temperature °C") +
+  theme_bw()
+
 
 #elevation and distribution#
 pre_peak_data %>% 
@@ -474,13 +521,13 @@ pre_peak_data %>%
 
 
 ## sites##
-dat_all %>% 
-  ggplot(aes(x = temp, y = Poaceae )) +
-  geom_point(aes(color = site), shape = 8, size = 3, stroke = 1, na.rm = T) +
-  geom_smooth(color = "red2", method = "lm", na.rm = T) +
-  scale_colour_viridis_d() +
-  scale_y_log10() +
-  theme_bw()
+# dat_all %>% 
+#   ggplot(aes(x = temp, y = Poaceae )) +
+#   geom_point(aes(color = site), shape = 8, size = 3, stroke = 1, na.rm = T) +
+#   geom_smooth(color = "red2", method = "lm", na.rm = T) +
+#   scale_colour_viridis_d() +
+#   scale_y_log10() +
+#   theme_bw()
 
 # only san michele ##
 pre_peak_data %>% 
@@ -494,35 +541,63 @@ pre_peak_data %>%
   scale_y_log10() +
   theme_bw()
   
-#sampler#
-pre_peak_data %>% 
-  ggplot(aes(x = peak_week, y = Poaceae)) +
-  geom_point(aes(color = sampler), shape = 19, size = 3, stroke = 1, na.rm = T) +
-  geom_smooth(color = "red", method = "lm", na.rm = T) + 
-  ggtitle("Poaceae trend in relationship with peak_week and differenciated by sampler")+
-  scale_colour_viridis_d() +
+# #sampler#
+# pre_peak_data %>% 
+#   ggplot(aes(x = peak_week, y = Poaceae)) +
+#   geom_point(aes(color = sampler), shape = 19, size = 3, stroke = 1, na.rm = T) +
+#   geom_smooth(color = "red", method = "lm", na.rm = T) + 
+#   ggtitle("Poaceae trend in relationship with peak_week and differenciated by sampler")+
+#   scale_colour_viridis_d() +
+#   scale_y_log10() +
+#   theme_bw()
+
+## vectors creation for boxplot labels##
+dat_n <- pre_peak_data %>% 
+  group_by(site, sampler) %>%
+  count() %>%
+  ungroup() 
+
+## boxplot poaceae and sites##
+ pre_peak_data %>% 
+   ggplot(aes(y = Poaceae, x= site, color = sampler )) +
+  geom_jitter(color= "grey50", alpha= 0.2)+
+  geom_boxplot( na.rm = T, fill= NA) +
+   scale_x_discrete(guide = guide_axis(angle = 90)) +
   scale_y_log10() +
+   labs(y= "Poaceae [-]") +
   theme_bw()
+ 
+ 
+ ## boxplot of peak week and sites##
+ pre_peak_data %>% 
+   ggplot(aes(y = peak_week, x= site, color = sampler )) +
+   geom_jitter(color= "grey50", alpha= 0.2)+
+   geom_boxplot( na.rm = T, fill= NA) +
+   scale_x_discrete(guide = guide_axis(angle = 90)) +
+   scale_y_log10() +
+   labs(y= "peak week") +
+   theme_bw()
+ 
 
 ## rain with temperature as color, gives the distribution another connotation# 
 # during a period of 12 weeks before the peak week##
 
-pre_peak_data %>% 
-  ggplot(aes(x = rain_peak, y = Poaceae)) +
-  geom_point(aes(color = temp), shape = 8, size = 3, stroke = 1, na.rm = T) +
-  geom_smooth(color = "orange2", method = "lm", na.rm = T) +
-  scale_colour_viridis_c() +
-  scale_y_log10() +
-  theme_bw()
+# pre_peak_data %>% 
+#   ggplot(aes(x = rain_peak, y = Poaceae)) +
+#   geom_point(aes(color = temp), shape = 8, size = 3, stroke = 1, na.rm = T) +
+#   geom_smooth(color = "orange2", method = "lm", na.rm = T) +
+#   scale_colour_viridis_c() +
+#   scale_y_log10() +
+#   theme_bw()
 
 
 #wind_speed#
-pre_peak_data %>% 
-  ggplot(aes(x = temp, y = log(Poaceae))) +
-  geom_point(aes(color = wind_speed), shape = 8, size = 3, stroke = 1, na.rm = T) +
-  geom_smooth(color = "orange2", method = "lm", na.rm = T) +
-  scale_colour_viridis_c() +
-  theme_bw()
+# pre_peak_data %>% 
+#   ggplot(aes(x = temp, y = log(Poaceae))) +
+#   geom_point(aes(color = wind_speed), shape = 8, size = 3, stroke = 1, na.rm = T) +
+#   geom_smooth(color = "orange2", method = "lm", na.rm = T) +
+#   scale_colour_viridis_c() +
+#   theme_bw()
 
 ## temp_log useful for analyse exponential relations in our models##-----------------------
 pre_peak_data <- pre_peak_data %>% 
@@ -535,9 +610,7 @@ dat_all_norm <- dat_all %>% # normalize meteo data
     elevation = min_max_norm(elevation),
     temp = min_max_norm(temp),
     rain = min_max_norm(rain),
-    wind_speed = min_max_norm(wind_speed),
-    humidity = min_max_norm(humidity)
-  ) %>% 
+    wind_speed = min_max_norm(wind_speed)) %>% 
   mutate( # convert NaN to NA
     across(
       .cols = where(is.double),
@@ -558,8 +631,7 @@ pre_peak_norm <- pre_peak_data %>%
     temp_log= min_max_norm(temp_log),
     rain_sum = min_max_norm(rain_sum),
     rain_peak = min_max_norm(rain_peak),
-    wind_speed = min_max_norm(wind_speed),
-    humidity = min_max_norm(humidity)
+    wind_speed = min_max_norm(wind_speed)
   ) %>% 
   mutate( # convert NaN to NA
     across(
@@ -746,6 +818,6 @@ AICc(model_test_peak_log_plus)
 #summary(model_test_all)#
 
 
-## ##
+## END ... for now ##
 
 
